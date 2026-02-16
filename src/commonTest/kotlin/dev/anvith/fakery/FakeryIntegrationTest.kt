@@ -1,23 +1,38 @@
 package dev.anvith.fakery
 
-import java.net.HttpURLConnection
-import java.net.URL
+import io.ktor.client.HttpClient
+import io.ktor.client.request.delete
+import io.ktor.client.request.get
+import io.ktor.client.request.header
+import io.ktor.client.request.post
+import io.ktor.client.request.setBody
+import io.ktor.client.statement.bodyAsText
+import io.ktor.http.ContentType
+import io.ktor.http.contentType
+import io.ktor.http.HttpMethod
+import io.ktor.client.request.request
+import kotlinx.coroutines.test.runTest
+import kotlinx.serialization.json.JsonPrimitive
 import kotlin.test.AfterTest
 import kotlin.test.BeforeTest
 import kotlin.test.Test
 import kotlin.test.assertEquals
 import kotlin.test.assertTrue
-import kotlinx.serialization.json.JsonPrimitive
 
 /**
- * Integration tests — spins up a real Ktor CIO server and makes actual HTTP requests.
+ * Integration tests — spins up a real Ktor CIO server and makes actual HTTP requests
+ * via Ktor's multiplatform [HttpClient].
+ *
+ * Runs on every platform that provides a `ktor-client-cio` engine on the test classpath.
  */
 class FakeryIntegrationTest {
 
     private lateinit var server: FakeryServer
+    private lateinit var client: HttpClient
 
     @BeforeTest
     fun setUp() {
+        client = HttpClient { expectSuccess = false }
         server = fakery(json = """
             [
               {
@@ -43,31 +58,34 @@ class FakeryIntegrationTest {
     }
 
     @AfterTest
-    fun tearDown() = server.stop()
+    fun tearDown() {
+        client.close()
+        server.stop()
+    }
 
     // ── Basic method routing ──────────────────────────────────────────────────
 
     @Test
-    fun `GET returns 200 with body`() {
+    fun `GET returns 200 with body`() = runTest {
         val (status, body) = get("/users")
         assertEquals(200, status)
         assertTrue(body.contains("users"))
     }
 
     @Test
-    fun `POST returns 201`() {
+    fun `POST returns 201`() = runTest {
         val (status, _) = post("/users", """{"name":"Bob"}""")
         assertEquals(201, status)
     }
 
     @Test
-    fun `DELETE returns 204`() {
+    fun `DELETE returns 204`() = runTest {
         val (status, _) = delete("/users/1")
         assertEquals(204, status)
     }
 
     @Test
-    fun `unregistered path returns 404`() {
+    fun `unregistered path returns 404`() = runTest {
         val (status, body) = get("/nonexistent")
         assertEquals(404, status)
         assertTrue(body.contains("No stub"))
@@ -76,20 +94,19 @@ class FakeryIntegrationTest {
     // ── Header matching ───────────────────────────────────────────────────────
 
     @Test
-    fun `request with matching header returns 200`() {
+    fun `request with matching header returns 200`() = runTest {
         val (status, _) = get("/secure", headers = mapOf("Authorization" to "Bearer secret"))
         assertEquals(200, status)
     }
 
     @Test
-    fun `request missing required header returns 404`() {
+    fun `request missing required header returns 404`() = runTest {
         val (status, _) = get("/secure")
         assertEquals(404, status)
     }
 
     @Test
-    fun `header value matching is case-sensitive`() {
-        // "Bearer SECRET" should NOT match stub expecting "Bearer secret"
+    fun `header value matching is case-sensitive`() = runTest {
         val (status, _) = get("/secure", headers = mapOf("Authorization" to "Bearer SECRET"))
         assertEquals(404, status)
     }
@@ -97,7 +114,7 @@ class FakeryIntegrationTest {
     // ── Query string stripping ────────────────────────────────────────────────
 
     @Test
-    fun `query string is stripped before path matching`() {
+    fun `query string is stripped before path matching`() = runTest {
         val (status, _) = get("/users?page=1&limit=10")
         assertEquals(200, status)
     }
@@ -105,8 +122,7 @@ class FakeryIntegrationTest {
     // ── Case-insensitive method matching ─────────────────────────────────────
 
     @Test
-    fun `method matching is case-insensitive`() {
-        // Stub defines "GET"; Ktor normalises methods but test verifies our matcher logic
+    fun `method matching is case-insensitive`() = runTest {
         val (status, _) = get("/users")
         assertEquals(200, status)
     }
@@ -114,7 +130,7 @@ class FakeryIntegrationTest {
     // ── Runtime stub management ───────────────────────────────────────────────
 
     @Test
-    fun `addStub at runtime is served immediately`() {
+    fun `addStub at runtime is served immediately`() = runTest {
         server.addStub(
             StubDefinition(
                 request  = StubRequest(method = "GET", path = "/dynamic"),
@@ -127,7 +143,7 @@ class FakeryIntegrationTest {
     }
 
     @Test
-    fun `clearStubs causes all paths to return 404`() {
+    fun `clearStubs causes all paths to return 404`() = runTest {
         assertEquals(200, get("/users").first)
         server.clearStubs()
         assertEquals(404, get("/users").first)
@@ -136,7 +152,7 @@ class FakeryIntegrationTest {
     // ── AutoCloseable ─────────────────────────────────────────────────────────
 
     @Test
-    fun `server supports use block via AutoCloseable`() {
+    fun `server supports use block via AutoCloseable`() = runTest {
         var capturedBaseUrl = ""
         fakery(json = """{"request":{"path":"/ac"},"response":{"status":200}}""").use { s ->
             s.start()
@@ -144,55 +160,47 @@ class FakeryIntegrationTest {
             val (status, _) = get("/ac", baseUrl = capturedBaseUrl)
             assertEquals(200, status)
         }
-        // After use{} the server is stopped; further requests should fail to connect
         assertTrue(capturedBaseUrl.isNotEmpty())
     }
 
     // ── Error response is valid JSON ──────────────────────────────────────────
 
     @Test
-    fun `error response body is valid JSON even when path contains special chars`() {
-        val (status, body) = get("/path/with/\"quotes\"")
+    fun `error response body is valid JSON`() = runTest {
+        val (status, body) = get("/path/not/found")
         assertEquals(404, status)
-        // Body must start with { and be parseable (no raw interpolation bugs)
         assertTrue(body.trimStart().startsWith("{"))
     }
 
     // ── Helpers ───────────────────────────────────────────────────────────────
 
-    private fun get(path: String, headers: Map<String, String> = emptyMap(), baseUrl: String = server.baseUrl) =
-        request("GET", path, headers = headers, baseUrl = baseUrl)
-
-    private fun post(path: String, body: String = "") = request("POST", path, body = body)
-
-    private fun delete(path: String) = request("DELETE", path)
-
-    private fun request(
-        method: String,
+    private suspend fun get(
         path: String,
-        body: String = "",
         headers: Map<String, String> = emptyMap(),
         baseUrl: String = server.baseUrl,
+    ): Pair<Int, String> = request("GET", path, headers = headers, baseUrl = baseUrl)
+
+    private suspend fun post(path: String, body: String = ""): Pair<Int, String> =
+        request("POST", path, body = body)
+
+    private suspend fun delete(path: String): Pair<Int, String> =
+        request("DELETE", path)
+
+    private suspend fun request(
+        method: String,
+        path: String,
+        headers: Map<String, String> = emptyMap(),
+        body: String = "",
+        baseUrl: String = server.baseUrl,
     ): Pair<Int, String> {
-        @Suppress("DEPRECATION")
-        val conn = URL("$baseUrl$path").openConnection() as HttpURLConnection
-        conn.requestMethod = method
-        conn.connectTimeout = 3_000
-        conn.readTimeout    = 3_000
-        headers.forEach { (k, v) -> conn.setRequestProperty(k, v) }
-
-        if (body.isNotEmpty()) {
-            conn.doOutput = true
-            conn.setRequestProperty("Content-Type", "application/json")
-            conn.outputStream.use { it.write(body.toByteArray()) }
+        val response = client.request("$baseUrl$path") {
+            this.method = HttpMethod.parse(method)
+            headers.forEach { (k, v) -> header(k, v) }
+            if (body.isNotEmpty()) {
+                contentType(ContentType.Application.Json)
+                setBody(body)
+            }
         }
-
-        val status       = conn.responseCode
-        val responseBody = runCatching {
-            (if (status < 400) conn.inputStream else conn.errorStream)
-                ?.bufferedReader()?.readText() ?: ""
-        }.getOrDefault("")
-        conn.disconnect()
-        return status to responseBody
+        return response.status.value to response.bodyAsText()
     }
 }

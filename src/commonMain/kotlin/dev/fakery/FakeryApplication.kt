@@ -15,38 +15,29 @@ import kotlinx.serialization.json.put
 
 /**
  * Ktor application module shared by all platforms.
- *
- * Accepts a [getStubs] lambda instead of a direct list reference so each platform
- * can return a safe snapshot (avoiding ConcurrentModificationException on JVM and
- * data races on native).
+ * Delegates matching and sequence advancement to [registry].
  */
-internal fun Application.fakeryModule(getStubs: () -> List<StubDefinition>) {
+internal fun Application.fakeryModule(registry: StubRegistry) {
     intercept(ApplicationCallPipeline.Call) {
-        // Snapshot at request time — safe regardless of concurrent addStub/clearStubs calls.
-        val stubs = getStubs()
-        val stub  = matchStub(call, stubs)
+        val stubResponse = registry.match(call)
 
-        if (stub != null) {
-            val response = stub.response
-            response.headers.forEach { (key, value) -> call.response.header(key, value) }
+        if (stubResponse != null) {
+            stubResponse.headers.forEach { (key, value) -> call.response.header(key, value) }
 
-            val body        = response.body?.toJsonString() ?: ""
-            val contentType = response.headers["Content-Type"] ?: "application/json; charset=utf-8"
+            val body        = stubResponse.body?.toJsonString() ?: ""
+            val contentType = stubResponse.headers["Content-Type"] ?: "application/json; charset=utf-8"
 
             call.respondText(
                 text        = body,
                 contentType = ContentType.parse(contentType),
-                status      = HttpStatusCode.fromValue(response.status),
+                status      = HttpStatusCode.fromValue(stubResponse.status),
             )
         } else {
             val method = call.request.httpMethod.value
             val path   = call.request.local.uri.substringBefore("?")
 
-            // Use buildJsonObject so method/path values are properly escaped.
-            val errorBody = buildJsonObject { put("error", "No stub for $method $path") }.toString()
-
             call.respondText(
-                text   = errorBody,
+                text   = buildJsonObject { put("error", "No stub for $method $path") }.toString(),
                 status = HttpStatusCode.NotFound,
             )
         }

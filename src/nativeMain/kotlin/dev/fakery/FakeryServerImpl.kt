@@ -1,5 +1,6 @@
 package dev.fakery
 
+import io.ktor.server.application.ApplicationCall
 import io.ktor.server.cio.CIO
 import io.ktor.server.cio.CIOApplicationEngine
 import io.ktor.server.engine.EmbeddedServer
@@ -11,15 +12,10 @@ internal actual fun createFakeryServer(port: Int, stubs: MutableList<StubDefinit
 
 internal class NativeFakeryServer(
     private val initialPort: Int,
-    initialStubs: List<StubDefinition>,
+    stubs: List<StubDefinition>,
 ) : FakeryServer {
 
-    /**
-     * @Volatile ensures that writes from the test thread (addStub / clearStubs) are
-     * immediately visible to the server thread. We replace the entire list reference
-     * atomically so the server always iterates a stable, immutable snapshot.
-     */
-    @Volatile private var stubs: List<StubDefinition> = initialStubs.toList()
+    private val registry = NativeStubRegistry(stubs)
 
     private var _port: Int = 0
     override val port: Int get() = _port
@@ -29,11 +25,8 @@ internal class NativeFakeryServer(
 
     override fun start() {
         server = embeddedServer(CIO, port = initialPort) {
-            fakeryModule { stubs }
+            fakeryModule(registry)
         }.start(wait = false)
-
-        // resolvedConnectors() suspends until the OS has actually bound the port,
-        // giving us the real port even when initialPort == 0.
         _port = runBlocking { server!!.engine.resolvedConnectors().first().port }
     }
 
@@ -42,13 +35,27 @@ internal class NativeFakeryServer(
         server = null
     }
 
-    /** Appends the stub; creates a new list to keep the snapshot guarantee. */
-    override fun addStub(stub: StubDefinition) {
-        stubs = stubs + stub
+    override fun addStub(stub: StubDefinition) = registry.add(stub)
+    override fun clearStubs()                  = registry.clear()
+    override fun reset()                       = registry.reset()
+}
+
+/**
+ * Native [StubRegistry] using a `@Volatile` list reference for safe snapshots.
+ * Writes replace the entire list atomically; reads always see a stable snapshot.
+ */
+private class NativeStubRegistry(initial: List<StubDefinition>) : StubRegistry() {
+
+    @Volatile private var entries: List<StatefulEntry> = initial.map { StatefulEntry(it) }
+
+    override suspend fun match(call: ApplicationCall): StubResponse? =
+        matchStub(call, entries)
+
+    override fun add(stub: StubDefinition) {
+        entries = entries + StatefulEntry(stub)
     }
 
-    /** Replaces the list atomically — any in-flight request continues on the old snapshot. */
-    override fun clearStubs() {
-        stubs = emptyList()
-    }
+    override fun clear() { entries = emptyList() }
+
+    override fun reset() { entries.forEach { it.resetCounter() } }
 }

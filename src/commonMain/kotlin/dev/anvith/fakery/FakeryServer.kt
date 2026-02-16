@@ -41,6 +41,13 @@ package dev.anvith.fakery
  * 4. `body`   — skipped when `null`; compared as parsed JSON when present
  *
  * If no stub matches, the server returns `404` with a JSON error body.
+ *
+ * ### Verifying calls
+ * Use [getCallCount] to assert how many times an endpoint was hit, or [verifyCallCount]
+ * as a one-liner assertion that throws [AssertionError] on mismatch:
+ * ```kotlin
+ * server.verifyCallCount("POST", "/login", expectedCount = 1)
+ * ```
  */
 interface FakeryServer : AutoCloseable {
 
@@ -106,6 +113,47 @@ interface FakeryServer : AutoCloseable {
      * ```
      */
     fun reset()
+
+    /**
+     * Returns the number of times the stub matching [method] and [path] (exact) has been called.
+     *
+     * Uses first-match-wins ordering — the same order as request matching.
+     * Returns `0` when no stub with that method and path is registered.
+     *
+     * Useful for asserting that an endpoint was (or was not) called:
+     * ```kotlin
+     * assertEquals(1, server.getCallCount("DELETE", "/users/42"))
+     * assertEquals(0, server.getCallCount("POST",   "/admin/reset"))
+     * ```
+     *
+     * @param method HTTP method, case-insensitive (e.g. `"GET"`, `"POST"`).
+     * @param path   Exact request path (e.g. `"/users/123"`).
+     */
+    fun getCallCount(method: String, path: String): Int
+
+    /**
+     * Asserts that the stub matching [method] and [path] was called exactly [expectedCount] times.
+     *
+     * Throws [AssertionError] when the actual call count does not match [expectedCount].
+     *
+     * ```kotlin
+     * server.verifyCallCount("POST", "/login", expectedCount = 1)
+     * server.verifyCallCount("GET",  "/logout", expectedCount = 0)
+     * ```
+     *
+     * @param method        HTTP method, case-insensitive.
+     * @param path          Exact request path.
+     * @param expectedCount The expected number of calls.
+     * @throws AssertionError if the actual call count differs from [expectedCount].
+     */
+    fun verifyCallCount(method: String, path: String, expectedCount: Int) {
+        val actual = getCallCount(method, path)
+        if (actual != expectedCount) {
+            throw AssertionError(
+                "Expected $method $path to be called $expectedCount time(s) but was $actual time(s).",
+            )
+        }
+    }
 
     /**
      * Alias for [stop] — enables `use {}` blocks:

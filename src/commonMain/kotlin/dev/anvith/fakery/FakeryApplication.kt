@@ -8,6 +8,7 @@ import io.ktor.server.application.call
 import io.ktor.server.request.httpMethod
 import io.ktor.server.response.header
 import io.ktor.server.response.respondText
+import kotlinx.coroutines.delay
 import kotlinx.serialization.json.Json
 import kotlinx.serialization.json.JsonElement
 import kotlinx.serialization.json.buildJsonObject
@@ -22,6 +23,8 @@ internal fun Application.fakeryModule(registry: StubRegistry) {
         val stubResponse = registry.match(call)
 
         if (stubResponse != null) {
+            stubResponse.delayMs?.let { ms -> delay(ms) }
+
             stubResponse.headers.forEach { (key, value) -> call.response.header(key, value) }
 
             val body        = stubResponse.body?.toJsonString() ?: ""

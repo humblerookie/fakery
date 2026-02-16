@@ -38,7 +38,7 @@ import kotlinx.serialization.json.JsonElement
  * ```
  * Call 1 → `202 pending`, Call 2 → `202 processing`, Call 3+ → `200 complete`.
  *
- * **Constraint:** exactly one of [response] or [sequence] must be non-null.
+ * **Constraint:** exactly one of [response] or [responses] must be non-null.
  *
  * Stub files may contain a single object or a JSON array of objects.
  * Matching is **first-match-wins** in registration order.
@@ -61,7 +61,8 @@ data class StubDefinition(
         val hasResponse  = response != null
         val hasResponses = !responses.isNullOrEmpty()
         require(hasResponse xor hasResponses) {
-            "StubDefinition for path '${request.path}' must define exactly one of " +
+            val identifier = request.path ?: request.pathPattern ?: "<any>"
+            "StubDefinition for path '$identifier' must define exactly one of " +
             "'response' or 'responses' (not both, not neither)."
         }
     }
@@ -76,6 +77,18 @@ data class StubDefinition(
  *
  * All non-null fields must match for the stub to be selected.
  * Fields omitted from the JSON take their default values.
+ *
+ * ### Path matching
+ * Use **either** [path] (exact) or [pathPattern] (regex), not both.
+ * When both are omitted the stub matches any path — useful as a catch-all.
+ *
+ * ### Query parameter matching
+ * Provide a [queryParams] map; only the declared keys are checked — extra
+ * query parameters on the incoming request are silently ignored.
+ *
+ * ### Body matching
+ * Use [body] for exact JSON equality, or [bodyContains] for a substring check
+ * on the raw request body. Both can be set; both must match.
  */
 @Serializable
 data class StubRequest(
@@ -91,8 +104,22 @@ data class StubRequest(
      * Exact request path to match. The query string is stripped before comparison.
      *
      * Example: `"/users/123"` matches `GET /users/123?foo=bar`.
+     *
+     * Mutually exclusive with [pathPattern]. When both are `null`, any path matches.
      */
-    val path: String,
+    val path: String? = null,
+
+    /**
+     * Regex pattern to match the request path against.
+     *
+     * The pattern is anchored — it must match the **entire** path, not just a substring.
+     * Use `.*` for substring-style matching: `"/users/.*"` matches `/users/123` and `/users/abc`.
+     *
+     * Example: `"^/users/\\d+$"` matches `/users/1`, `/users/42`, but not `/users/abc`.
+     *
+     * Mutually exclusive with [path]. When both are `null`, any path matches.
+     */
+    val pathPattern: String? = null,
 
     /**
      * Header subset to match. Only keys declared here are checked;
@@ -106,12 +133,40 @@ data class StubRequest(
     val headers: Map<String, String> = emptyMap(),
 
     /**
-     * JSON body to match. When `null` (the default), the request body is not checked.
-     * When present, the incoming body is parsed as JSON and compared for equality.
+     * Query parameter subset to match. Only keys declared here are checked;
+     * extra query parameters on the incoming request are silently ignored.
      *
+     * Both key and value comparisons are case-sensitive.
+     * Values should be provided URL-decoded (Fakery decodes incoming params before comparison).
+     *
+     * Example: `{ "status": "active", "page": "1" }` requires both params to be present
+     * with exactly those values.
+     */
+    val queryParams: Map<String, String>? = null,
+
+    /**
+     * JSON body to match for exact equality. When `null` (the default), JSON equality
+     * is not checked.
+     *
+     * When present, the incoming body is parsed as JSON and compared structurally.
      * Use this for POST/PUT stubs that should only fire for a specific payload.
+     *
+     * Compatible with [bodyContains] — both conditions must be satisfied when set.
      */
     val body: JsonElement? = null,
+
+    /**
+     * Substring to search for in the raw request body. When `null` (the default),
+     * the body is not checked for containment.
+     *
+     * Useful for partial body matching when you only care that a specific field or
+     * value is present, without constraining the entire payload.
+     *
+     * Example: `"\"role\":\"admin\""` matches any body containing that JSON fragment.
+     *
+     * Compatible with [body] — both conditions must be satisfied when set.
+     */
+    val bodyContains: String? = null,
 )
 
 /**
@@ -146,4 +201,14 @@ data class StubResponse(
      * overridden via [headers].
      */
     val body: JsonElement? = null,
+
+    /**
+     * Milliseconds to wait before sending this response.
+     *
+     * Use this to simulate slow endpoints and verify your client's timeout behaviour.
+     * When `null` (the default), the response is sent immediately.
+     *
+     * Example: `"delayMs": 500` adds a 500 ms delay before the response is written.
+     */
+    val delayMs: Long? = null,
 )

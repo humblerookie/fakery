@@ -10,19 +10,24 @@ import io.ktor.server.response.header
 import io.ktor.server.response.respondText
 import kotlinx.serialization.json.Json
 import kotlinx.serialization.json.JsonElement
+import kotlinx.serialization.json.buildJsonObject
+import kotlinx.serialization.json.put
 
 /**
  * Ktor application module shared by all platforms.
- * Intercepts every request, finds a matching stub, and responds accordingly.
+ *
+ * Accepts a [getStubs] lambda instead of a direct list reference so each platform
+ * can return a safe snapshot (avoiding ConcurrentModificationException on JVM and
+ * data races on native).
  */
-internal fun Application.fakeryModule(stubs: List<StubDefinition>) {
+internal fun Application.fakeryModule(getStubs: () -> List<StubDefinition>) {
     intercept(ApplicationCallPipeline.Call) {
-        val stub = matchStub(call, stubs)
+        // Snapshot at request time — safe regardless of concurrent addStub/clearStubs calls.
+        val stubs = getStubs()
+        val stub  = matchStub(call, stubs)
 
         if (stub != null) {
             val response = stub.response
-
-            // Add stub-defined headers
             response.headers.forEach { (key, value) -> call.response.header(key, value) }
 
             val body        = response.body?.toJsonString() ?: ""
@@ -37,8 +42,11 @@ internal fun Application.fakeryModule(stubs: List<StubDefinition>) {
             val method = call.request.httpMethod.value
             val path   = call.request.local.uri.substringBefore("?")
 
+            // Use buildJsonObject so method/path values are properly escaped.
+            val errorBody = buildJsonObject { put("error", "No stub for $method $path") }.toString()
+
             call.respondText(
-                text   = """{"error":"No stub for $method $path"}""",
+                text   = errorBody,
                 status = HttpStatusCode.NotFound,
             )
         }

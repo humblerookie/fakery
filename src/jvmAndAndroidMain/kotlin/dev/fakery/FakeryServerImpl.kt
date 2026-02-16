@@ -5,14 +5,24 @@ import io.ktor.server.cio.CIOApplicationEngine
 import io.ktor.server.engine.EmbeddedServer
 import io.ktor.server.engine.embeddedServer
 import java.net.ServerSocket
+import java.util.concurrent.CopyOnWriteArrayList
 
 internal actual fun createFakeryServer(port: Int, stubs: MutableList<StubDefinition>): FakeryServer =
     JvmFakeryServer(port, stubs)
 
 internal class JvmFakeryServer(
     initialPort: Int,
-    private val stubs: MutableList<StubDefinition>,
+    stubs: MutableList<StubDefinition>,
 ) : FakeryServer {
+
+    /**
+     * CopyOnWriteArrayList gives us:
+     * - Thread-safe writes (addStub / clearStubs)
+     * - Lock-free reads that iterate over a stable snapshot
+     * This eliminates the ConcurrentModificationException risk when clearStubs()
+     * is called during an in-flight request.
+     */
+    private val stubs: CopyOnWriteArrayList<StubDefinition> = CopyOnWriteArrayList(stubs)
 
     private val _port: Int = if (initialPort != 0) initialPort else findFreePort()
     override val port: Int get() = _port
@@ -22,7 +32,9 @@ internal class JvmFakeryServer(
 
     override fun start() {
         server = embeddedServer(CIO, port = _port) {
-            fakeryModule(stubs)
+            // Pass a snapshot lambda — CopyOnWriteArrayList.toList() is O(n) but
+            // returns a stable copy safe for iteration without holding any lock.
+            fakeryModule { stubs.toList() }
         }.start(wait = false)
     }
 
@@ -31,9 +43,9 @@ internal class JvmFakeryServer(
         server = null
     }
 
-    override fun addStub(stub: StubDefinition) { synchronized(stubs) { stubs.add(stub) } }
+    override fun addStub(stub: StubDefinition) { stubs.add(stub) }
 
-    override fun clearStubs() { synchronized(stubs) { stubs.clear() } }
+    override fun clearStubs() { stubs.clear() }
 
     private fun findFreePort(): Int = ServerSocket(0).use { it.localPort }
 }

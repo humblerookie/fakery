@@ -42,7 +42,7 @@ package dev.fakery
  *
  * If no stub matches, the server returns `404` with a JSON error body.
  */
-interface FakeryServer {
+interface FakeryServer : AutoCloseable {
 
     /**
      * The base URL of the server, e.g. `"http://localhost:52341"`.
@@ -96,4 +96,15 @@ interface FakeryServer {
      * Any request arriving after this call (before new stubs are added) will receive a `404`.
      */
     fun clearStubs()
+
+    /**
+     * Alias for [stop]. Enables use with Kotlin's `use {}` block:
+     * ```kotlin
+     * fakery(json = stubs).use { server ->
+     *     server.start()
+     *     // test...
+     * } // stop() called automatically
+     * ```
+     */
+    override fun close() = stop()
 }

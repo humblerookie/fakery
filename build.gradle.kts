@@ -15,7 +15,9 @@ kotlin {
 
     jvm()
     androidTarget {
-        compilations.all { kotlinOptions { jvmTarget = "11" } }
+        compilerOptions {
+            jvmTarget.set(org.jetbrains.kotlin.gradle.dsl.JvmTarget.JVM_11)
+        }
     }
 
     iosX64()

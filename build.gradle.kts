@@ -43,6 +43,18 @@ kotlin {
 
         commonTest.dependencies {
             implementation(libs.kotlin.test)
+            implementation(libs.ktor.client.core)   // HttpClient for integration tests
+            implementation(libs.coroutines.test)    // runTest
+        }
+
+        // ── JVM test engine ──────────────────────────────────────────────────
+        jvmTest.dependencies {
+            implementation(libs.ktor.client.cio)
+        }
+
+        // ── Native test engine ───────────────────────────────────────────────
+        nativeTest.dependencies {
+            implementation(libs.ktor.client.cio)
         }
 
         // ── JVM + Android shared ─────────────────────────────────────────────

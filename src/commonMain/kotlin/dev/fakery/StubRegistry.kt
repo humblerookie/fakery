@@ -39,7 +39,7 @@ internal class StatefulEntry(val definition: StubDefinition) {
     suspend fun matches(call: ApplicationCall): Boolean = matchesStub(call, definition)
 
     fun nextResponse(): StubResponse {
-        val responses = definition.responses
+        val responses = definition.resolvedResponses
         val index     = minOf(callCount, responses.size - 1)
         callCount++
         return responses[index]

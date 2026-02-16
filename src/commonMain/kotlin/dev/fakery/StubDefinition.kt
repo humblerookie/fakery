@@ -47,7 +47,7 @@ import kotlinx.serialization.json.JsonElement
 data class StubDefinition(
     val request: StubRequest,
 
-    /** Single canned response. Mutually exclusive with [sequence]. */
+    /** Single canned response. Mutually exclusive with [responses]. */
     val response: StubResponse? = null,
 
     /**
@@ -55,20 +55,20 @@ data class StubDefinition(
      * Mutually exclusive with [response].
      * The last element is repeated indefinitely once the list is exhausted.
      */
-    val sequence: List<StubResponse>? = null,
+    val responses: List<StubResponse>? = null,
 ) {
     init {
-        val hasResponse = response != null
-        val hasSequence = !sequence.isNullOrEmpty()
-        require(hasResponse xor hasSequence) {
+        val hasResponse  = response != null
+        val hasResponses = !responses.isNullOrEmpty()
+        require(hasResponse xor hasResponses) {
             "StubDefinition for path '${request.path}' must define exactly one of " +
-            "'response' or 'sequence' (not both, not neither)."
+            "'response' or 'responses' (not both, not neither)."
         }
     }
 
     /** Resolved response list — always non-empty after construction. */
-    internal val responses: List<StubResponse>
-        get() = sequence ?: listOf(response!!)
+    internal val resolvedResponses: List<StubResponse>
+        get() = responses ?: listOf(response!!)
 }
 
 /**

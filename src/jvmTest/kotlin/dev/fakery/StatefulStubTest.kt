@@ -26,7 +26,7 @@ class StatefulStubTest {
     fun `sequence returns responses in order`() {
         server.addStub(StubDefinition(
             request  = StubRequest(path = "/job"),
-            sequence = listOf(
+            responses = listOf(
                 StubResponse(status = 202, body = buildJsonObject { put("status", "pending") }),
                 StubResponse(status = 202, body = buildJsonObject { put("status", "processing") }),
                 StubResponse(status = 200, body = buildJsonObject { put("status", "complete") }),
@@ -42,7 +42,7 @@ class StatefulStubTest {
     fun `last response is repeated after sequence is exhausted`() {
         server.addStub(StubDefinition(
             request  = StubRequest(path = "/flaky"),
-            sequence = listOf(
+            responses = listOf(
                 StubResponse(status = 503),
                 StubResponse(status = 200),
             ),
@@ -58,7 +58,7 @@ class StatefulStubTest {
     fun `error then success retry scenario`() {
         server.addStub(StubDefinition(
             request  = StubRequest(method = "POST", path = "/submit"),
-            sequence = listOf(
+            responses = listOf(
                 StubResponse(status = 500, body = buildJsonObject { put("error", "internal") }),
                 StubResponse(status = 500, body = buildJsonObject { put("error", "internal") }),
                 StubResponse(status = 201, body = buildJsonObject { put("id", 42)             }),
@@ -81,7 +81,7 @@ class StatefulStubTest {
     fun `reset rewinds sequence counters without removing stubs`() {
         server.addStub(StubDefinition(
             request  = StubRequest(path = "/counter"),
-            sequence = listOf(
+            responses = listOf(
                 StubResponse(status = 200, body = buildJsonObject { put("call", 1) }),
                 StubResponse(status = 200, body = buildJsonObject { put("call", 2) }),
             ),
@@ -120,7 +120,7 @@ class StatefulStubTest {
             StubDefinition(
                 request  = StubRequest(path = "/bad"),
                 response = StubResponse(status = 200),
-                sequence = listOf(StubResponse(status = 201)),
+                responses = listOf(StubResponse(status = 201)),
             )
         }
     }
@@ -131,7 +131,7 @@ class StatefulStubTest {
             StubDefinition(
                 request  = StubRequest(path = "/bad"),
                 response = null,
-                sequence = null,
+                responses = null,
             )
         }
     }
@@ -143,16 +143,16 @@ class StatefulStubTest {
         val stub = parseStub("""
             {
               "request": { "path": "/seq" },
-              "sequence": [
+              "responses": [
                 { "status": 503 },
                 { "status": 200 }
               ]
             }
         """.trimIndent())
 
-        assertEquals(2,   stub.responses.size)
-        assertEquals(503, stub.responses[0].status)
-        assertEquals(200, stub.responses[1].status)
+        assertEquals(2,   stub.resolvedResponses.size)
+        assertEquals(503, stub.resolvedResponses[0].status)
+        assertEquals(200, stub.resolvedResponses[1].status)
     }
 
     @Test
@@ -160,7 +160,7 @@ class StatefulStubTest {
         val json = """
             {
               "request":  { "path": "/from-json" },
-              "sequence": [
+              "responses": [
                 { "status": 429, "body": { "error": "rate limited" } },
                 { "status": 200, "body": { "data": "ok" } }
               ]

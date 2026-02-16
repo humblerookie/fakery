@@ -1,22 +1,13 @@
 package dev.fakery
 
-import io.ktor.server.application.ApplicationCall
-import io.ktor.server.request.httpMethod
-import io.ktor.server.request.receiveText
-import kotlinx.serialization.json.JsonElement
-
 /**
- * Finds the first stub that matches an incoming [ApplicationCall].
+ * Finds the first stub that matches [incoming] and advances its sequence counter.
  *
- * Matching rules (all must pass):
- * 1. **method**  — case-insensitive (HTTP spec)
- * 2. **path**    — exact match; query string is stripped before comparison
- * 3. **headers** — stub headers are a required subset; names case-insensitive, values exact
- * 4. **body**    — skipped when `null`; must equal incoming body when present
+ * The [IncomingRequest] is parsed **once** by the caller ([StubRegistry.match])
+ * before this function is called, so body parsing happens at most once per request
+ * regardless of how many stubs are evaluated.
  *
- * @return The next [StubResponse] from the matched stub (advances sequence counter),
- *         or `null` if no stub matched.
+ * @return The next [StubResponse] from the matched stub, or `null` if nothing matched.
  */
-internal suspend fun matchStub(call: ApplicationCall, stubs: List<StatefulEntry>): StubResponse? {
-    return stubs.firstOrNull { it.matches(call) }?.nextResponse()
-}
+internal fun matchStub(incoming: IncomingRequest, stubs: List<StatefulEntry>): StubResponse? =
+    stubs.firstOrNull { it.matches(incoming) }?.nextResponse()

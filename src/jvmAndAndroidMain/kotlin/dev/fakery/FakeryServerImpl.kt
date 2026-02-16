@@ -43,15 +43,22 @@ internal class JvmFakeryServer(
 }
 
 /**
- * JVM-specific [StubRegistry] backed by a [CopyOnWriteArrayList].
- * Reads (match) iterate a stable snapshot; writes (add/clear/reset) are thread-safe.
+ * JVM-specific [StubRegistry].
+ *
+ * - `CopyOnWriteArrayList` — thread-safe structural mutations (add / clear)
+ * - Body parsed once per request via [IncomingRequest.from] before iterating
+ * - Per-stub `callCount` uses `atomicfu` atomic — no skipped steps under concurrency
  */
 private class JvmStubRegistry(initial: List<StubDefinition>) : StubRegistry() {
 
     private val entries = CopyOnWriteArrayList(initial.map { StatefulEntry(it) })
 
-    override suspend fun match(call: ApplicationCall): StubResponse? =
-        matchStub(call, entries.toList())
+    override suspend fun match(call: ApplicationCall): StubResponse? {
+        val snapshot  = entries.toList()
+        val needsBody = snapshot.any { it.definition.request.body != null }
+        val incoming  = IncomingRequest.from(call, needsBody)
+        return matchStub(incoming, snapshot)
+    }
 
     override fun add(stub: StubDefinition) { entries.add(StatefulEntry(stub)) }
 

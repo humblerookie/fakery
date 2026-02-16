@@ -191,4 +191,29 @@ class StatefulStubTest {
         conn.disconnect()
         return status to responseBody
     }
+
+    // ── Concurrency ───────────────────────────────────────────────────────────
+
+    @Test
+    fun `concurrent requests each advance the counter exactly once`() {
+        server.addStub(StubDefinition(
+            request   = StubRequest(path = "/concurrent"),
+            responses = (1..20).map { i ->
+                StubResponse(status = 200, body = buildJsonObject { put("step", i) })
+            },
+        ))
+
+        // Fire 20 requests in parallel and collect the step values returned
+        val steps: List<String> = (1..20).toList()
+            .parallelStream()
+            .map { get("/concurrent").second }
+            .toList()
+
+        // Every step 1..20 must appear exactly once — no two threads got the same index
+        val seen = steps.mapNotNull { body ->
+            Regex(""""step":(\d+)""").find(body)?.groupValues?.get(1)?.toInt()
+        }.sorted()
+
+        assertEquals((1..20).toList(), seen)
+    }
 }

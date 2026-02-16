@@ -1,16 +1,20 @@
 package dev.fakery
 
 import io.ktor.server.application.ApplicationCall
+import kotlinx.atomicfu.atomic
 
 /**
- * Owns the list of stubs and their per-stub call counters for stateful sequences.
+ * Owns the stub list and per-stub call counters for stateful sequences.
  *
- * Thread-safety contract: subclasses must ensure [add], [clear], [reset], and [match]
+ * Platform implementations must ensure [add], [clear], [reset], and [match]
  * are safe to call concurrently from different threads.
  */
 internal abstract class StubRegistry {
 
-    /** Finds and advances the matching stub, returning its next [StubResponse]. */
+    /**
+     * Parses the request, finds the first matching stub, advances its counter,
+     * and returns the next [StubResponse]. Returns `null` if no stub matched.
+     */
     abstract suspend fun match(call: ApplicationCall): StubResponse?
 
     /** Appends a stub. Safe to call after the server has started. */
@@ -20,43 +24,44 @@ internal abstract class StubRegistry {
     abstract fun clear()
 
     /**
-     * Resets every stub's sequence counter back to zero without removing stubs.
-     * Useful for re-running a scenario in the same test without restarting the server.
+     * Resets every stub's sequence counter to zero without removing stubs.
+     * Use this between test cases to replay a stateful scenario.
      */
     abstract fun reset()
 }
 
 /**
- * A single stub paired with an atomic call counter for sequence advancement.
+ * A single stub paired with an **atomic** call counter for sequence advancement.
  *
- * [nextResponse] is called once per matched request. The counter advances monotonically;
- * once the sequence is exhausted the last response is returned indefinitely.
+ * [callCount] uses `atomicfu` so concurrent requests cannot skip a step or
+ * observe the same index twice.
  */
 internal class StatefulEntry(val definition: StubDefinition) {
 
-    private var callCount: Int = 0
+    private val callCount = atomic(0)
 
-    suspend fun matches(call: ApplicationCall): Boolean = matchesStub(call, definition)
+    /** Tests whether this entry matches [incoming]. Pure — does not advance the counter. */
+    fun matches(incoming: IncomingRequest): Boolean {
+        val req = definition.request
 
+        val methodMatch  = req.method.equals(incoming.method, ignoreCase = true)
+        val pathMatch    = req.path == incoming.path
+        val headersMatch = req.headers.all { (name, value) -> incoming.headers[name] == value }
+        val bodyMatch    = req.body == null || req.body == incoming.body
+
+        return methodMatch && pathMatch && headersMatch && bodyMatch
+    }
+
+    /**
+     * Atomically advances the counter and returns the corresponding response.
+     * Once the sequence is exhausted the last response is returned indefinitely.
+     */
     fun nextResponse(): StubResponse {
         val responses = definition.resolvedResponses
-        val index     = minOf(callCount, responses.size - 1)
-        callCount++
+        val index     = minOf(callCount.getAndIncrement(), responses.size - 1)
         return responses[index]
     }
 
-    fun resetCounter() { callCount = 0 }
-}
-
-/** Shared matching logic reused by [StatefulEntry]. */
-private suspend fun matchesStub(call: ApplicationCall, stub: StubDefinition): Boolean {
-    val incoming = IncomingRequest.from(call)
-    val req      = stub.request
-
-    val methodMatch  = req.method.equals(incoming.method, ignoreCase = true)
-    val pathMatch    = req.path == incoming.path
-    val headersMatch = req.headers.all { (name, value) -> incoming.headers[name] == value }
-    val bodyMatch    = req.body == null || req.body == incoming.body
-
-    return methodMatch && pathMatch && headersMatch && bodyMatch
+    /** Resets the counter without removing the stub. */
+    fun resetCounter() { callCount.value = 0 }
 }

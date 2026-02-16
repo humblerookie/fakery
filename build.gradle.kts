@@ -37,6 +37,8 @@ kotlin {
             implementation(libs.ktor.server.core)       // Application, intercept, respond
             implementation(libs.coroutines.core)
             implementation(libs.serialization.json)     // JSON parsing
+            implementation(libs.atomicfu)               // Thread-safe counters + atomic refs
+            implementation(libs.kotlinx.io)             // Multiplatform file I/O
         }
 
         commonTest.dependencies {

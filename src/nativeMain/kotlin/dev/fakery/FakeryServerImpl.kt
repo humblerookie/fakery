@@ -5,6 +5,8 @@ import io.ktor.server.cio.CIO
 import io.ktor.server.cio.CIOApplicationEngine
 import io.ktor.server.engine.EmbeddedServer
 import io.ktor.server.engine.embeddedServer
+import kotlinx.atomicfu.atomic
+import kotlinx.atomicfu.update
 import kotlinx.coroutines.runBlocking
 
 internal actual fun createFakeryServer(port: Int, stubs: MutableList<StubDefinition>): FakeryServer =
@@ -41,21 +43,30 @@ internal class NativeFakeryServer(
 }
 
 /**
- * Native [StubRegistry] using a `@Volatile` list reference for safe snapshots.
- * Writes replace the entire list atomically; reads always see a stable snapshot.
+ * Native [StubRegistry].
+ *
+ * - `atomicfu.AtomicRef` + [update] — CAS loop on `add` to eliminate the TOCTOU race
+ *   that `@Volatile` alone cannot prevent
+ * - Body parsed once per request before iterating stubs
+ * - Per-stub `callCount` uses `atomicfu` atomic (same as JVM)
  */
 private class NativeStubRegistry(initial: List<StubDefinition>) : StubRegistry() {
 
-    @Volatile private var entries: List<StatefulEntry> = initial.map { StatefulEntry(it) }
+    private val entriesRef = atomic(initial.map { StatefulEntry(it) })
 
-    override suspend fun match(call: ApplicationCall): StubResponse? =
-        matchStub(call, entries)
-
-    override fun add(stub: StubDefinition) {
-        entries = entries + StatefulEntry(stub)
+    override suspend fun match(call: ApplicationCall): StubResponse? {
+        val snapshot  = entriesRef.value
+        val needsBody = snapshot.any { it.definition.request.body != null }
+        val incoming  = IncomingRequest.from(call, needsBody)
+        return matchStub(incoming, snapshot)
     }
 
-    override fun clear() { entries = emptyList() }
+    /** CAS loop — safe under concurrent [add] calls; no step can be lost. */
+    override fun add(stub: StubDefinition) {
+        entriesRef.update { it + StatefulEntry(stub) }
+    }
 
-    override fun reset() { entries.forEach { it.resetCounter() } }
+    override fun clear() { entriesRef.value = emptyList() }
+
+    override fun reset() { entriesRef.value.forEach { it.resetCounter() } }
 }

@@ -6,7 +6,7 @@ plugins {
     alias(libs.plugins.kotlin.serialization)
 }
 
-group   = "dev.fakery"
+group   = "dev.anvith.fakery"
 version = "0.1.0"
 
 kotlin {
@@ -65,7 +65,7 @@ kotlin {
 }
 
 android {
-    namespace  = "dev.fakery"
+    namespace  = "dev.anvith.fakery"
     compileSdk = 35
     defaultConfig { minSdk = 21 }
     compileOptions {

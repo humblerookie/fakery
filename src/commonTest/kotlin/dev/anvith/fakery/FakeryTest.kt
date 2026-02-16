@@ -1,4 +1,4 @@
-package dev.fakery
+package dev.anvith.fakery
 
 import kotlin.test.Test
 import kotlin.test.assertEquals

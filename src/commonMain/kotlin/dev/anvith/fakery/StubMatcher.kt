@@ -1,4 +1,4 @@
-package dev.fakery
+package dev.anvith.fakery
 
 /**
  * Finds the first stub that matches [incoming] and advances its sequence counter.

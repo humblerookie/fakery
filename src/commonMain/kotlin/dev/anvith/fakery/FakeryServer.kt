@@ -1,4 +1,4 @@
-package dev.fakery
+package dev.anvith.fakery
 
 /**
  * A running fake HTTP server backed by Ktor CIO.

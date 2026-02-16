@@ -1,4 +1,4 @@
-package dev.fakery
+package dev.anvith.fakery
 
 import io.ktor.http.Headers
 import io.ktor.server.application.ApplicationCall

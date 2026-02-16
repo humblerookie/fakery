@@ -1,4 +1,4 @@
-package dev.fakery
+package dev.anvith.fakery
 
 import io.ktor.server.application.ApplicationCall
 import kotlinx.atomicfu.atomic

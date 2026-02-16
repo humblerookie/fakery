@@ -29,7 +29,7 @@ internal val FakeryJson = Json {
  *
  * @throws kotlinx.serialization.SerializationException if the JSON is invalid or missing required fields.
  */
-fun parseStub(json: String): StubDefinition =
+internal fun parseStub(json: String): StubDefinition =
     FakeryJson.decodeFromString(StubDefinition.serializer(), json)
 
 /**
@@ -47,7 +47,7 @@ fun parseStub(json: String): StubDefinition =
  *
  * @throws kotlinx.serialization.SerializationException if the JSON is invalid.
  */
-fun parseStubs(json: String): List<StubDefinition> =
+internal fun parseStubs(json: String): List<StubDefinition> =
     FakeryJson.decodeFromString(ListSerializer(StubDefinition.serializer()), json)
 
 /**

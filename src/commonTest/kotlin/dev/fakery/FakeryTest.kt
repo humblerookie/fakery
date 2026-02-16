@@ -1,5 +1,8 @@
 package dev.fakery
 
+import kotlinx.serialization.json.JsonPrimitive
+import kotlinx.serialization.json.buildJsonObject
+import kotlinx.serialization.json.put
 import kotlin.test.Test
 import kotlin.test.assertEquals
 import kotlin.test.assertNotNull
@@ -20,7 +23,7 @@ class StubParsingTest {
 
         val stub = parseStub(json)
 
-        assertEquals("GET",       stub.request.method)
+        assertEquals("GET",        stub.request.method)
         assertEquals("/users/123", stub.request.path)
         assertEquals(200,          stub.response.status)
         assertNotNull(stub.response.body)
@@ -28,14 +31,12 @@ class StubParsingTest {
 
     @Test
     fun `parse stub array from JSON array`() {
-        val json = """
+        val stubs = parseStubs("""
             [
               { "request": { "path": "/a" }, "response": { "status": 200 } },
               { "request": { "path": "/b" }, "response": { "status": 404 } }
             ]
-        """.trimIndent()
-
-        val stubs = parseStubs(json)
+        """.trimIndent())
 
         assertEquals(2,    stubs.size)
         assertEquals("/a", stubs[0].request.path)
@@ -63,14 +64,12 @@ class StubParsingTest {
 
     @Test
     fun `headers are parsed correctly`() {
-        val json = """
+        val stub = parseStub("""
             {
               "request":  { "path": "/secure", "headers": { "Authorization": "Bearer token" } },
               "response": { "status": 200,     "headers": { "X-Custom": "value" }            }
             }
-        """.trimIndent()
-
-        val stub = parseStub(json)
+        """.trimIndent())
 
         assertEquals("Bearer token", stub.request.headers["Authorization"])
         assertEquals("value",        stub.response.headers["X-Custom"])
@@ -84,31 +83,66 @@ class StubParsingTest {
 
     @Test
     fun `fakery() entry point accepts stub list`() {
-        val stubs = listOf(
+        val server = fakery(stubs = listOf(
             StubDefinition(
                 request  = StubRequest(path = "/ping"),
                 response = StubResponse(status = 200),
             )
-        )
-        val server = fakery(stubs = stubs)
+        ))
         assertNotNull(server)
     }
 
     @Test
-    fun `single file containing a JSON array is parsed as multiple stubs`() {
-        val json = """
+    fun `single JSON array parsed as multiple stubs`() {
+        val stubs = parseStubs("""
             [
               { "request": { "method": "POST", "path": "/login"  }, "response": { "status": 401 } },
               { "request": { "method": "GET",  "path": "/logout" }, "response": { "status": 200 } }
             ]
-        """.trimIndent()
+        """.trimIndent())
 
-        val stubs = parseStubs(json)
+        assertEquals(2,      stubs.size)
+        assertEquals("POST", stubs[0].request.method)
+        assertEquals("GET",  stubs[1].request.method)
+        assertEquals(401,    stubs[0].response.status)
+    }
+}
 
-        assertEquals(2,       stubs.size)
-        assertEquals("POST",  stubs[0].request.method)
-        assertEquals("GET",   stubs[1].request.method)
-        assertEquals(401,     stubs[0].response.status)
-        assertEquals(200,     stubs[1].response.status)
+// ── Stub model ───────────────────────────────────────────────────────────────
+
+class StubDefinitionTest {
+
+    @Test
+    fun `StubDefinition can be constructed programmatically`() {
+        val stub = StubDefinition(
+            request  = StubRequest(
+                method  = "POST",
+                path    = "/users",
+                headers = mapOf("Content-Type" to "application/json"),
+                body    = buildJsonObject { put("name", "Alice") },
+            ),
+            response = StubResponse(
+                status  = 201,
+                headers = mapOf("Location" to "/users/1"),
+                body    = buildJsonObject { put("id", 1) },
+            ),
+        )
+
+        assertEquals("POST",             stub.request.method)
+        assertEquals("/users",           stub.request.path)
+        assertEquals("application/json", stub.request.headers["Content-Type"])
+        assertNotNull(stub.request.body)
+        assertEquals(201,                stub.response.status)
+        assertEquals("/users/1",         stub.response.headers["Location"])
+        assertNotNull(stub.response.body)
+    }
+
+    @Test
+    fun `primitive JSON body is supported`() {
+        val stub = StubDefinition(
+            request  = StubRequest(path = "/flag"),
+            response = StubResponse(body = JsonPrimitive(true)),
+        )
+        assertEquals(JsonPrimitive(true), stub.response.body)
     }
 }

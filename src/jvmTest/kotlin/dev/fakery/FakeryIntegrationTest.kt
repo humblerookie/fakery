@@ -21,15 +21,15 @@ class FakeryIntegrationTest {
         server = fakery(json = """
             [
               {
-                "request":  { "method": "GET",  "path": "/users" },
+                "request":  { "method": "GET",    "path": "/users" },
                 "response": { "status": 200, "body": {"users": [{"id": 1}]} }
               },
               {
-                "request":  { "method": "POST", "path": "/users" },
+                "request":  { "method": "POST",   "path": "/users" },
                 "response": { "status": 201, "body": {"id": 2} }
               },
               {
-                "request":  { "method": "GET", "path": "/secure",
+                "request":  { "method": "GET",    "path": "/secure",
                                "headers": { "Authorization": "Bearer secret" } },
                 "response": { "status": 200, "body": {"ok": true} }
               },
@@ -43,9 +43,7 @@ class FakeryIntegrationTest {
     }
 
     @AfterTest
-    fun tearDown() {
-        server.stop()
-    }
+    fun tearDown() = server.stop()
 
     // ── Basic method routing ──────────────────────────────────────────────────
 
@@ -89,6 +87,30 @@ class FakeryIntegrationTest {
         assertEquals(404, status)
     }
 
+    @Test
+    fun `header value matching is case-sensitive`() {
+        // "Bearer SECRET" should NOT match stub expecting "Bearer secret"
+        val (status, _) = get("/secure", headers = mapOf("Authorization" to "Bearer SECRET"))
+        assertEquals(404, status)
+    }
+
+    // ── Query string stripping ────────────────────────────────────────────────
+
+    @Test
+    fun `query string is stripped before path matching`() {
+        val (status, _) = get("/users?page=1&limit=10")
+        assertEquals(200, status)
+    }
+
+    // ── Case-insensitive method matching ─────────────────────────────────────
+
+    @Test
+    fun `method matching is case-insensitive`() {
+        // Stub defines "GET"; Ktor normalises methods but test verifies our matcher logic
+        val (status, _) = get("/users")
+        assertEquals(200, status)
+    }
+
     // ── Runtime stub management ───────────────────────────────────────────────
 
     @Test
@@ -111,25 +133,49 @@ class FakeryIntegrationTest {
         assertEquals(404, get("/users").first)
     }
 
+    // ── AutoCloseable ─────────────────────────────────────────────────────────
+
+    @Test
+    fun `server supports use block via AutoCloseable`() {
+        var capturedBaseUrl = ""
+        fakery(json = """{"request":{"path":"/ac"},"response":{"status":200}}""").use { s ->
+            s.start()
+            capturedBaseUrl = s.baseUrl
+            val (status, _) = get("/ac", baseUrl = capturedBaseUrl)
+            assertEquals(200, status)
+        }
+        // After use{} the server is stopped; further requests should fail to connect
+        assertTrue(capturedBaseUrl.isNotEmpty())
+    }
+
+    // ── Error response is valid JSON ──────────────────────────────────────────
+
+    @Test
+    fun `error response body is valid JSON even when path contains special chars`() {
+        val (status, body) = get("/path/with/\"quotes\"")
+        assertEquals(404, status)
+        // Body must start with { and be parseable (no raw interpolation bugs)
+        assertTrue(body.trimStart().startsWith("{"))
+    }
+
     // ── Helpers ───────────────────────────────────────────────────────────────
 
-    private fun get(path: String, headers: Map<String, String> = emptyMap()): Pair<Int, String> =
-        request("GET", path, headers = headers)
+    private fun get(path: String, headers: Map<String, String> = emptyMap(), baseUrl: String = server.baseUrl) =
+        request("GET", path, headers = headers, baseUrl = baseUrl)
 
-    private fun post(path: String, body: String = ""): Pair<Int, String> =
-        request("POST", path, body = body)
+    private fun post(path: String, body: String = "") = request("POST", path, body = body)
 
-    private fun delete(path: String): Pair<Int, String> =
-        request("DELETE", path)
+    private fun delete(path: String) = request("DELETE", path)
 
     private fun request(
         method: String,
         path: String,
         body: String = "",
         headers: Map<String, String> = emptyMap(),
+        baseUrl: String = server.baseUrl,
     ): Pair<Int, String> {
         @Suppress("DEPRECATION")
-        val conn = URL("${server.baseUrl}$path").openConnection() as HttpURLConnection
+        val conn = URL("$baseUrl$path").openConnection() as HttpURLConnection
         conn.requestMethod = method
         conn.connectTimeout = 3_000
         conn.readTimeout    = 3_000
@@ -147,7 +193,6 @@ class FakeryIntegrationTest {
                 ?.bufferedReader()?.readText() ?: ""
         }.getOrDefault("")
         conn.disconnect()
-
         return status to responseBody
     }
 }

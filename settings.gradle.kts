@@ -1,5 +1,7 @@
 rootProject.name = "fakery"
 
+include(":sample")
+
 pluginManagement {
     repositories {
         google()

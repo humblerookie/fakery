@@ -1,4 +1,4 @@
-package dev.fakery
+package dev.anvith.fakery
 
 import kotlinx.io.buffered
 import kotlinx.io.files.Path

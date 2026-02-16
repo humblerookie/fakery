@@ -1,4 +1,4 @@
-package dev.fakery
+package dev.anvith.fakery
 
 import kotlinx.serialization.builtins.ListSerializer
 import kotlinx.serialization.json.Json

@@ -6,7 +6,7 @@ plugins {
     alias(libs.plugins.kotlin.serialization)
 }
 
-group   = "dev.fakery"
+group   = "dev.anvith.fakery"
 version = "0.1.0"
 
 kotlin {
@@ -37,6 +37,8 @@ kotlin {
             implementation(libs.ktor.server.core)       // Application, intercept, respond
             implementation(libs.coroutines.core)
             implementation(libs.serialization.json)     // JSON parsing
+            implementation(libs.atomicfu)               // Thread-safe counters + atomic refs
+            implementation(libs.kotlinx.io)             // Multiplatform file I/O
         }
 
         commonTest.dependencies {
@@ -63,7 +65,7 @@ kotlin {
 }
 
 android {
-    namespace  = "dev.fakery"
+    namespace  = "dev.anvith.fakery"
     compileSdk = 35
     defaultConfig { minSdk = 21 }
     compileOptions {

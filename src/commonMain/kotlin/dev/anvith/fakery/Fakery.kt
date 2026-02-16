@@ -1,4 +1,4 @@
-package dev.fakery
+package dev.anvith.fakery
 
 /** Platform-specific server factory wired via expect/actual. */
 internal expect fun createFakeryServer(port: Int, stubs: MutableList<StubDefinition>): FakeryServer

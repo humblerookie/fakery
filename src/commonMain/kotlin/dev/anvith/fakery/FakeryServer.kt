@@ -1,4 +1,4 @@
-package dev.fakery
+package dev.anvith.fakery
 
 /**
  * A running fake HTTP server backed by Ktor CIO.
@@ -98,12 +98,22 @@ interface FakeryServer : AutoCloseable {
     fun clearStubs()
 
     /**
-     * Alias for [stop]. Enables use with Kotlin's `use {}` block:
+     * Resets every stub's sequence counter to zero without removing stubs.
+     *
+     * Use this to replay a stateful scenario without restarting the server:
+     * ```kotlin
+     * @AfterTest fun reset() = server.reset()
+     * ```
+     */
+    fun reset()
+
+    /**
+     * Alias for [stop] — enables `use {}` blocks:
      * ```kotlin
      * fakery(json = stubs).use { server ->
      *     server.start()
      *     // test...
-     * } // stop() called automatically
+     * }
      * ```
      */
     override fun close() = stop()

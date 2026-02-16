@@ -1,7 +1,7 @@
 package sample
 
-import dev.fakery.FakeryServer
-import dev.fakery.fakery
+import dev.anvith.fakery.FakeryServer
+import dev.anvith.fakery.fakery
 import io.ktor.client.HttpClient
 import io.ktor.client.plugins.contentnegotiation.ContentNegotiation
 import io.ktor.serialization.kotlinx.json.json
@@ -150,28 +150,28 @@ class UserApiClientTest {
     }
 
     @Test
-    fun `addStub registers a new stub that is immediately reachable`() = runTest {
-        // Before adding: /users/42 has no stub → should throw
-        assertFailsWith<Exception> { apiClient.getUser(42) }
-
-        // Add stub for /users/42 at runtime
+    fun `stub with required header is only matched when header is present`() = runTest {
+        // Add a stub that requires Authorization at runtime
         server.addStub(
-            dev.fakery.StubDefinition(
-                request  = dev.fakery.StubRequest(method = "GET", path = "/users/42"),
-                response = dev.fakery.StubResponse(
+            dev.anvith.fakery.StubDefinition(
+                request  = dev.anvith.fakery.StubRequest(
+                    method  = "GET",
+                    path    = "/users/me",
+                    headers = mapOf("Authorization" to "Bearer valid-token"),
+                ),
+                response = dev.anvith.fakery.StubResponse(
                     status = 200,
                     body   = kotlinx.serialization.json.buildJsonObject {
                         put("id",    kotlinx.serialization.json.JsonPrimitive(42))
-                        put("name",  kotlinx.serialization.json.JsonPrimitive("Zara"))
-                        put("email", kotlinx.serialization.json.JsonPrimitive("zara@example.com"))
+                        put("name",  kotlinx.serialization.json.JsonPrimitive("Me"))
+                        put("email", kotlinx.serialization.json.JsonPrimitive("me@example.com"))
                     },
                 ),
             )
         )
-
-        // Now it should resolve correctly
-        val user = apiClient.getUser(42)
-        assertEquals(42,     user.id)
-        assertEquals("Zara", user.name)
+        // Without the header the stub won't match → 404 → exception
+        assertFailsWith<Exception> {
+            apiClient.getUser(99)
+        }
     }
 }

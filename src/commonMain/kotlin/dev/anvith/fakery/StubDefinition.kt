@@ -1,12 +1,12 @@
-package dev.fakery
+package dev.anvith.fakery
 
 import kotlinx.serialization.Serializable
 import kotlinx.serialization.json.JsonElement
 
 /**
- * A single stub — pairs an inbound [StubRequest] matcher with a canned [StubResponse].
+ * A single stub — pairs an inbound [StubRequest] matcher with one or more [StubResponse]s.
  *
- * ### JSON format
+ * ### Single response (default, backward-compatible)
  * ```json
  * {
  *   "request": {
@@ -23,14 +23,53 @@ import kotlinx.serialization.json.JsonElement
  * }
  * ```
  *
- * Stubs files may contain a single object or a JSON array of objects.
+ * ### Stateful sequence
+ * Provide a `responses` array to return different responses on successive calls.
+ * Once the sequence is exhausted the **last response is repeated** indefinitely.
+ * ```json
+ * {
+ *   "request": { "method": "GET", "path": "/job/123" },
+ *   "responses": [
+ *     { "status": 202, "body": { "status": "pending"    } },
+ *     { "status": 202, "body": { "status": "processing" } },
+ *     { "status": 200, "body": { "status": "complete"   } }
+ *   ]
+ * }
+ * ```
+ * Call 1 → `202 pending`, Call 2 → `202 processing`, Call 3+ → `200 complete`.
+ *
+ * **Constraint:** exactly one of [response] or [sequence] must be non-null.
+ *
+ * Stub files may contain a single object or a JSON array of objects.
  * Matching is **first-match-wins** in registration order.
  */
 @Serializable
 data class StubDefinition(
     val request: StubRequest,
-    val response: StubResponse,
-)
+
+    /** Single canned response. Mutually exclusive with [responses]. */
+    val response: StubResponse? = null,
+
+    /**
+     * Ordered list of responses for stateful scenarios.
+     * Mutually exclusive with [response].
+     * The last element is repeated indefinitely once the list is exhausted.
+     */
+    val responses: List<StubResponse>? = null,
+) {
+    init {
+        val hasResponse  = response != null
+        val hasResponses = !responses.isNullOrEmpty()
+        require(hasResponse xor hasResponses) {
+            "StubDefinition for path '${request.path}' must define exactly one of " +
+            "'response' or 'responses' (not both, not neither)."
+        }
+    }
+
+    /** Resolved response list — always non-empty after construction. */
+    internal val resolvedResponses: List<StubResponse>
+        get() = responses ?: listOf(response!!)
+}
 
 /**
  * Describes which inbound request a stub should match.
@@ -59,7 +98,7 @@ data class StubRequest(
      * Header subset to match. Only keys declared here are checked;
      * extra headers on the incoming request are ignored.
      *
-     * Comparison is case-insensitive on values.
+     * Header *names* are matched case-insensitively; *values* are exact (case-sensitive).
      *
      * Example: `{ "Authorization": "Bearer token" }` requires the request to
      * carry that exact Authorization header value.

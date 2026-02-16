@@ -1,7 +1,9 @@
 package dev.fakery
 
-import io.ktor.server.cio.*
-import io.ktor.server.engine.*
+import io.ktor.server.cio.CIO
+import io.ktor.server.cio.CIOApplicationEngine
+import io.ktor.server.engine.EmbeddedServer
+import io.ktor.server.engine.embeddedServer
 import java.net.ServerSocket
 
 internal actual fun createFakeryServer(port: Int, stubs: MutableList<StubDefinition>): FakeryServer =

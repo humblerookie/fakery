@@ -1,7 +1,8 @@
 package dev.fakery
 
-import io.ktor.server.application.*
-import io.ktor.server.request.*
+import io.ktor.server.application.ApplicationCall
+import io.ktor.server.request.httpMethod
+import io.ktor.server.request.receiveText
 import kotlinx.serialization.json.Json
 import kotlinx.serialization.json.JsonElement
 

@@ -2,7 +2,12 @@ package dev.fakery
 
 import java.net.HttpURLConnection
 import java.net.URL
-import kotlin.test.*
+import kotlin.test.AfterTest
+import kotlin.test.BeforeTest
+import kotlin.test.Test
+import kotlin.test.assertEquals
+import kotlin.test.assertTrue
+import kotlinx.serialization.json.JsonPrimitive
 
 /**
  * Integration tests — spins up a real Ktor CIO server and makes actual HTTP requests.
@@ -80,7 +85,7 @@ class FakeryIntegrationTest {
 
     @Test
     fun `request missing required header returns 404`() {
-        val (status, _) = get("/secure")   // no Authorization header
+        val (status, _) = get("/secure")
         assertEquals(404, status)
     }
 
@@ -91,7 +96,7 @@ class FakeryIntegrationTest {
         server.addStub(
             StubDefinition(
                 request  = StubRequest(method = "GET", path = "/dynamic"),
-                response = StubResponse(status = 200, body = kotlinx.serialization.json.JsonPrimitive("dynamic!")),
+                response = StubResponse(status = 200, body = JsonPrimitive("dynamic!")),
             )
         )
         val (status, body) = get("/dynamic")
@@ -101,11 +106,8 @@ class FakeryIntegrationTest {
 
     @Test
     fun `clearStubs causes all paths to return 404`() {
-        // Confirm it works before clearing
         assertEquals(200, get("/users").first)
-
         server.clearStubs()
-
         assertEquals(404, get("/users").first)
     }
 
@@ -126,8 +128,8 @@ class FakeryIntegrationTest {
         body: String = "",
         headers: Map<String, String> = emptyMap(),
     ): Pair<Int, String> {
-        val url = URL("${server.baseUrl}$path")
-        val conn = url.openConnection() as HttpURLConnection
+        @Suppress("DEPRECATION")
+        val conn = URL("${server.baseUrl}$path").openConnection() as HttpURLConnection
         conn.requestMethod = method
         conn.connectTimeout = 3_000
         conn.readTimeout    = 3_000
@@ -141,7 +143,8 @@ class FakeryIntegrationTest {
 
         val status       = conn.responseCode
         val responseBody = runCatching {
-            (if (status < 400) conn.inputStream else conn.errorStream)?.bufferedReader()?.readText() ?: ""
+            (if (status < 400) conn.inputStream else conn.errorStream)
+                ?.bufferedReader()?.readText() ?: ""
         }.getOrDefault("")
         conn.disconnect()
 

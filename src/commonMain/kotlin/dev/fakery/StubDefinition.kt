@@ -24,12 +24,12 @@ import kotlinx.serialization.json.JsonElement
  * ```
  *
  * ### Stateful sequence
- * Provide a `sequence` array to return different responses on successive calls.
+ * Provide a `responses` array to return different responses on successive calls.
  * Once the sequence is exhausted the **last response is repeated** indefinitely.
  * ```json
  * {
  *   "request": { "method": "GET", "path": "/job/123" },
- *   "sequence": [
+ *   "responses": [
  *     { "status": 202, "body": { "status": "pending"    } },
  *     { "status": 202, "body": { "status": "processing" } },
  *     { "status": 200, "body": { "status": "complete"   } }

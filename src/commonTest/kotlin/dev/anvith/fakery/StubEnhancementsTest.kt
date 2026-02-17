@@ -177,7 +177,7 @@ class StubEnhancementsTest {
         }
     }
     @Test
-    fun `getCallCount - reset() zeroes the counter`() = runTest {
+    fun `getCallCount - reset zeroes the counter`() = runTest {
         server = fakery(json = """
             [{ "request": { "path": "/ping" }, "response": { "status": 200 } }]
         """.trimIndent())

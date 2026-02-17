@@ -77,13 +77,13 @@ class StubParsingTest {
     }
 
     @Test
-    fun `fakery() entry point accepts JSON string`() {
+    fun `fakery entry point accepts JSON string`() {
         val server = fakery(json = """{"request":{"path":"/health"},"response":{"status":200}}""")
         assertNotNull(server)
     }
 
     @Test
-    fun `fakery() entry point accepts stub list`() {
+    fun `fakery entry point accepts stub list`() {
         val stubs = listOf(
             StubDefinition(
                 request  = StubRequest(path = "/ping"),

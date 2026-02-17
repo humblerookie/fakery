@@ -15,27 +15,43 @@ import kotlinx.serialization.json.JsonElement
 internal data class IncomingRequest(
     val method: String,
     val path: String,
+    /** URL-decoded query parameters. Multi-value keys keep only the first value. */
+    val queryParams: Map<String, String>,
     val headers: Headers,
+    /** Raw body text, or `null` when no stub required body inspection. */
+    val rawBody: String?,
+    /** Body parsed as JSON, or `null` when the body was absent or non-JSON. */
     val body: JsonElement?,
 ) {
     companion object {
         /**
          * Parses the incoming [call] into an [IncomingRequest].
          *
-         * @param needsBody When `true`, the request body is read and parsed as JSON.
-         *                  Pass `stubs.any { it.request.body != null }` to avoid
-         *                  reading the body stream when no stub needs body matching.
+         * @param needsBody When `true`, the request body is read and stored in
+         *                  [rawBody] (and parsed as JSON into [body]).
+         *                  Pass `stubs.any { it.request.body != null || it.request.bodyContains != null }`
+         *                  to avoid reading the body stream when no stub needs body matching.
          */
         suspend fun from(call: ApplicationCall, needsBody: Boolean): IncomingRequest {
-            val body: JsonElement? = if (needsBody) {
-                runCatching { FakeryJson.parseToJsonElement(call.receiveText()) }.getOrNull()
+            val rawBody: String? = if (needsBody) {
+                runCatching { call.receiveText() }.getOrNull()
             } else null
 
+            val parsedBody: JsonElement? = rawBody?.let {
+                runCatching { FakeryJson.parseToJsonElement(it) }.getOrNull()
+            }
+
+            val queryParams: Map<String, String> = call.request.queryParameters
+                .entries()
+                .associate { (key, values) -> key to (values.firstOrNull() ?: "") }
+
             return IncomingRequest(
-                method  = call.request.httpMethod.value,
-                path    = call.request.local.uri.substringBefore("?"),
-                headers = call.request.headers,
-                body    = body,
+                method      = call.request.httpMethod.value,
+                path        = call.request.local.uri.substringBefore("?"),
+                queryParams = queryParams,
+                headers     = call.request.headers,
+                rawBody     = rawBody,
+                body        = parsedBody,
             )
         }
     }

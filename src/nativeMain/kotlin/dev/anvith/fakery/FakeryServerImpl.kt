@@ -37,9 +37,10 @@ internal class NativeFakeryServer(
         server = null
     }
 
-    override fun addStub(stub: StubDefinition) = registry.add(stub)
-    override fun clearStubs()                  = registry.clear()
-    override fun reset()                       = registry.reset()
+    override fun addStub(stub: StubDefinition)                         = registry.add(stub)
+    override fun clearStubs()                                          = registry.clear()
+    override fun reset()                                               = registry.reset()
+    override fun getCallCount(method: String, path: String): Int       = registry.getCallCount(method, path)
 }
 
 /**
@@ -56,7 +57,9 @@ private class NativeStubRegistry(initial: List<StubDefinition>) : StubRegistry()
 
     override suspend fun match(call: ApplicationCall): StubResponse? {
         val snapshot  = entriesRef.value
-        val needsBody = snapshot.any { it.definition.request.body != null }
+        val needsBody = snapshot.any { entry ->
+            entry.definition.request.body != null || entry.definition.request.bodyContains != null
+        }
         val incoming  = IncomingRequest.from(call, needsBody)
         return matchStub(incoming, snapshot)
     }
@@ -69,4 +72,10 @@ private class NativeStubRegistry(initial: List<StubDefinition>) : StubRegistry()
     override fun clear() { entriesRef.value = emptyList() }
 
     override fun reset() { entriesRef.value.forEach { it.resetCounter() } }
+
+    override fun getCallCount(method: String, path: String): Int =
+        entriesRef.value.firstOrNull { entry ->
+            val req = entry.definition.request
+            req.method.equals(method, ignoreCase = true) && req.path == path
+        }?.currentCallCount ?: 0
 }

@@ -16,3 +16,4 @@ dependencyResolutionManagement {
 }
 
 include(":sample")
+include(":server")
